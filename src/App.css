@@ -109,6 +109,25 @@ section {
 
 input:focus,select:focus,button:focus{outline:none;box-shadow:0 8px 30px rgba(59,130,246,0.12)}
 
+/* Более заметный фокус для доступности */
+input:focus, select:focus, textarea:focus, button:focus {
+  outline: 3px solid rgba(59,130,246,0.14);
+  outline-offset: 2px;
+}
+
+/* Улучшения печати: таблицы и карточки печатаются аккуратно */
+@media print{
+  .container{box-shadow:none;background:white}
+  .exam-table, .cards{page-break-inside:avoid}
+  .modal-backdrop{display:none}
+}
+
+/* Responsive modal for small screens */
+@media (max-width:480px){
+  .modal{width:96%;padding:1rem}
+  .table-wrap{padding:0}
+}
+
 body[data-theme='dark']{
   --bg: #071017;
   --surface: #081424;
@@ -178,3 +197,10 @@ body[data-theme='dark'] .card-meta,.card-teacher{color:var(--muted)}
 .logout-btn:hover {
   background: #cfd8dc;
 }
+
+/* Modal confirm */
+.modal-backdrop{position:fixed;inset:0;background:rgba(4,8,12,0.4);display:flex;align-items:center;justify-content:center;z-index:60}
+.modal{background:var(--surface);padding:1.25rem;border-radius:12px;box-shadow:0 20px 60px rgba(2,6,23,0.6);max-width:520px;width:94%;color:var(--text)}
+.modal h3{margin:0 0 0.5rem 0}
+.modal p{margin:0;color:var(--muted)}
+.modal button{padding:0.45em 0.9em;border-radius:8px}

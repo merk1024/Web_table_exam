@@ -58,6 +58,20 @@ function App() {
   const [authUser, setAuthUser] = useState(null);
   const [loginError, setLoginError] = useState('');
   const [filterClass, setFilterClass] = useState('all');
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // Закрывать модал по Escape
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        setShowConfirm(false);
+        setDeleteTarget(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Обработка изменения формы логина
   const handleLoginChange = (e) => {
@@ -177,7 +191,7 @@ function App() {
                       <div className="card-date">{exam.date} • {exam.time}</div>
                       <div className="card-teacher">Преподаватель: {exam.teacher}</div>
                       {(role === 'teacher' || role === 'admin') && (
-                        <button style={{marginLeft: '0.5rem'}} onClick={() => setExams(es => es.filter(x => x.id !== exam.id))}>Удалить</button>
+                        <button style={{marginLeft: '0.5rem'}} onClick={() => { setDeleteTarget(exam); setShowConfirm(true); }}>Удалить</button>
                       )}
                     </div>
                   </div>
@@ -246,6 +260,20 @@ function App() {
           </section>
         )}
       </main>
+
+      {/* Confirm modal */}
+      {showConfirm && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirm-heading">
+          <div className="modal" role="document">
+            <h3 id="confirm-heading">Подтвердите удаление</h3>
+            <p>Вы уверены, что хотите удалить экзамен "{deleteTarget?.subject}" ({deleteTarget?.class})?</p>
+            <div style={{display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem'}}>
+              <button onClick={() => { setShowConfirm(false); setDeleteTarget(null); }} style={{background: 'transparent', border: '1px solid rgba(0,0,0,0.08)'}}>Отмена</button>
+              <button onClick={() => { setExams(es => es.filter(x => x.id !== deleteTarget.id)); setShowConfirm(false); setDeleteTarget(null); }}>Удалить</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
