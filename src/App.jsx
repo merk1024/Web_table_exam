@@ -1,10 +1,6 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 
-// Note: To use Excel import, install: npm install xlsx
-// Then uncomment the line below:
-// import * as XLSX from 'xlsx';
-
 // USERS DATABASE - В продакшене это будет из backend
 const USERS_DB = [
   { id: 1, name: 'Азамат Студентов', role: 'student', login: 'student', password: '1234', group: 'COMSE-25' },
@@ -42,10 +38,21 @@ const INITIAL_EXAMS = [
   },
 ];
 
+// Временные слоты для расписания (8:00 - 18:00)
+const TIME_SLOTS = [
+  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', 
+  '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
+  '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', 
+  '17:00', '17:30', '18:00'
+];
+
+// Дни недели
+const WEEKDAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+
 function App() {
   const [user, setUser] = useState(null);
   const [exams, setExams] = useState([]);
-  const [schedule, setSchedule] = useState(null);
+  const [schedule, setSchedule] = useState([]);
   const [theme, setTheme] = useState('light');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterGroup, setFilterGroup] = useState('all');
@@ -53,7 +60,18 @@ function App() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [activeTab, setActiveTab] = useState('exams');
-  const [uploadProgress, setUploadProgress] = useState('');
+  
+  // Форма для создания занятия
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({
+    day: 'Понедельник',
+    time: '09:00',
+    group: '',
+    subject: '',
+    teacher: '',
+    room: '',
+    duration: 90 // длительность в минутах
+  });
 
   // ============ ЛОКАЛЬНАЯ БАЗА ДАННЫХ (localStorage) ============
   
@@ -81,7 +99,9 @@ function App() {
     if (savedSchedule) {
       try {
         setSchedule(JSON.parse(savedSchedule));
-      } catch (e) {}
+      } catch (e) {
+        setSchedule([]);
+      }
     }
   }, []);
 
@@ -94,7 +114,7 @@ function App() {
 
   // Сохранить расписание при изменении
   useEffect(() => {
-    if (schedule) {
+    if (schedule.length >= 0) {
       localStorage.setItem('schedule_db', JSON.stringify(schedule));
     }
   }, [schedule]);
@@ -127,178 +147,37 @@ function App() {
       if (e.key === 'Escape') {
         setShowConfirm(false);
         setDeleteTarget(null);
+        setShowScheduleForm(false);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // ============ ИМПОРТ РАСПИСАНИЯ ИЗ EXCEL ============
+  // ============ ФУНКЦИИ ЛОГИНА ============
   
-  const parseScheduleFromExcel = (data) => {
-    const classes = [];
-    const workbook = XLSX.read(data, { type: 'array' });
-    
-    const daysMapping = {
-      'MONDAY': 'Понедельник',
-      'TUESDAY': 'Вторник',
-      'WEDNESDAY': 'Среда',
-      'THURSDAY': 'Четверг',
-      'FRIDAY': 'Пятница',
-      'SATURDAY': 'Суббота'
-    };
-
-    workbook.SheetNames.forEach(sheetName => {
-      // Обрабатываем только листы с Spring25
-      if (!sheetName.includes('Spring25') || sheetName.includes('Master') || sheetName.includes('PhD')) {
-        return;
-      }
-
-      const dayEn = sheetName.split(' ')[0].toUpperCase();
-      const day = daysMapping[dayEn] || dayEn;
-      
-      const sheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-      // Найти строку с временными слотами
-      let timeRowIdx = -1;
-      for (let i = 0; i < jsonData.length; i++) {
-        const row = jsonData[i];
-        if (row && row.some(cell => cell && String(cell).includes('08'))) {
-          timeRowIdx = i;
-          break;
-        }
-      }
-
-      if (timeRowIdx === -1) return;
-
-      // Извлечь временные слоты
-      const timeSlots = jsonData[timeRowIdx]
-        .slice(4)
-        .filter(cell => cell && String(cell).match(/\d{2}[:.]\d{2}/))
-        .map(cell => String(cell).replace(/\./g, ':'));
-
-      // Обработать строки с группами
-      for (let rowIdx = timeRowIdx + 2; rowIdx < jsonData.length; rowIdx++) {
-        const row = jsonData[rowIdx];
-        if (!row) continue;
-
-        // Найти группу
-        let group = null;
-        for (let colIdx = 0; colIdx < Math.min(5, row.length); colIdx++) {
-          const cell = row[colIdx];
-          if (cell && String(cell).match(/COM[A-Z]+-\d{2}/)) {
-            group = String(cell).trim();
-            break;
-          }
-        }
-
-        if (!group) continue;
-
-        // Извлечь занятия
-        for (let slotIdx = 0; slotIdx < timeSlots.length; slotIdx++) {
-          const colIdx = 4 + slotIdx;
-          if (colIdx >= row.length) continue;
-
-          const cellContent = row[colIdx];
-          if (!cellContent || String(cellContent).toLowerCase().includes('lunch') || 
-              String(cellContent).toLowerCase().includes('advisor')) {
-            continue;
-          }
-
-          // Парсинг содержимого
-          const lines = String(cellContent).split('\n').map(l => l.trim()).filter(l => l);
-          if (lines.length === 0) continue;
-
-          const subject = lines[0];
-          let teacher = 'TBA';
-          let room = 'TBA';
-
-          for (let i = 1; i < lines.length; i++) {
-            const line = lines[i];
-            if (line.match(/\b(Mr\.|Ms\.|Dr\.)/)) {
-              teacher = line.replace(/^(Mr\.|Ms\.|Dr\.)\s*/, '');
-              const roomMatch = teacher.match(/([A-Z0-9]+(?:\([0-9]+\))?)$/);
-              if (roomMatch) {
-                room = roomMatch[1];
-                teacher = teacher.substring(0, roomMatch.index).trim();
-              }
-            }
-          }
-
-          classes.push({
-            id: classes.length + 1,
-            day,
-            dayEn,
-            group,
-            time: timeSlots[slotIdx],
-            subject: subject.substring(0, 100),
-            teacher: teacher.substring(0, 50),
-            room: room.substring(0, 20)
-          });
-        }
-      }
-    });
-
-    return classes;
-  };
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setUploadProgress('Загрузка файла...');
-
-    try {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          setUploadProgress('Парсинг расписания...');
-          const data = new Uint8Array(event.target.result);
-          const classes = parseScheduleFromExcel(data);
-          
-          const groups = [...new Set(classes.map(c => c.group))].sort();
-          
-          const scheduleData = {
-            classes,
-            groups,
-            totalClasses: classes.length,
-            semester: 'Spring 2025-2026',
-            uploadDate: new Date().toISOString()
-          };
-
-          setSchedule(scheduleData);
-          setUploadProgress(`✅ Загружено ${classes.length} занятий для ${groups.length} групп`);
-          
-          setTimeout(() => setUploadProgress(''), 3000);
-        } catch (error) {
-          setUploadProgress(`❌ Ошибка парсинга: ${error.message}`);
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    } catch (error) {
-      setUploadProgress(`❌ Ошибка загрузки: ${error.message}`);
-    }
-  };
-
-  // ============ ФУНКЦИИ ДЛЯ РАБОТЫ С ДАННЫМИ ============
-
   const handleLogin = (e) => {
     e.preventDefault();
-    const foundUser = USERS_DB.find(u => u.login === loginForm.login && u.password === loginForm.password);
+    const foundUser = USERS_DB.find(
+      u => u.login === loginForm.login && u.password === loginForm.password
+    );
     if (foundUser) {
       setUser(foundUser);
       setLoginError('');
-      setLoginForm({ login: '', password: '' });
     } else {
-      setLoginError('Неверный логин или пароль');
+      setLoginError('❌ Неверный логин или пароль');
     }
   };
 
-  const handleAddExam = (e) => {
+  const handleLogout = () => {
+    setUser(null);
+    setLoginForm({ login: '', password: '' });
+  };
+
+  // ============ ФУНКЦИИ ЭКЗАМЕНОВ ============
+  
+  const addExam = (e) => {
     e.preventDefault();
-    if (!form.group || !form.subject || !form.date || !form.time) return;
-    
     const newExam = {
       id: Date.now(),
       group: form.group,
@@ -310,95 +189,170 @@ function App() {
       type: form.type,
       semester: form.semester,
       students: form.students.split(',').map(s => s.trim()).filter(Boolean),
-      grades: {},
+      grades: {}
     };
-    
     setExams([...exams, newExam]);
-    setForm({ group: '', subject: '', date: '', time: '', room: '', type: 'Экзамен', semester: 'Spring 2025-2026', students: '' });
+    setForm({
+      group: '',
+      subject: '',
+      date: '',
+      time: '',
+      room: '',
+      type: 'Экзамен',
+      semester: 'Spring 2025-2026',
+      students: '',
+    });
   };
 
   const handleExamEdit = (id, field, value) => {
-    setExams(exams.map(exam =>
-      exam.id === id ? { ...exam, [field]: field === 'students' ? value.split(',').map(s => s.trim()).filter(Boolean) : value } : exam
+    setExams(exams.map(exam => 
+      exam.id === id ? { ...exam, [field]: value } : exam
     ));
   };
 
   const handleGradeChange = (examId, studentName, grade) => {
-    setExams(exams.map(exam =>
-      exam.id === examId ? { ...exam, grades: { ...exam.grades, [studentName]: grade } } : exam
+    setExams(exams.map(exam => {
+      if (exam.id === examId) {
+        return {
+          ...exam,
+          grades: { ...exam.grades, [studentName]: grade }
+        };
+      }
+      return exam;
+    }));
+  };
+
+  // ============ ФУНКЦИИ РАСПИСАНИЯ ============
+  
+  const addScheduleClass = (e) => {
+    e.preventDefault();
+    const newClass = {
+      id: Date.now(),
+      ...scheduleForm
+    };
+    setSchedule([...schedule, newClass]);
+    setScheduleForm({
+      day: 'Понедельник',
+      time: '09:00',
+      group: '',
+      subject: '',
+      teacher: '',
+      room: '',
+      duration: 90
+    });
+    setShowScheduleForm(false);
+  };
+
+  const deleteScheduleClass = (id) => {
+    setSchedule(schedule.filter(cls => cls.id !== id));
+  };
+
+  const editScheduleClass = (id, field, value) => {
+    setSchedule(schedule.map(cls => 
+      cls.id === id ? { ...cls, [field]: value } : cls
     ));
   };
 
-  const getDaysUntilExam = (examDate) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const exam = new Date(examDate);
-    exam.setHours(0, 0, 0, 0);
-    const diffTime = exam - today;
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
+  // ============ ФИЛЬТРАЦИЯ ============
+  
+  const allGroups = [...new Set(exams.map(e => e.group))];
+  const scheduleGroups = [...new Set(schedule.map(s => s.group))];
+  const allScheduleGroups = user?.role === 'student' 
+    ? [user.group] 
+    : scheduleGroups.length > 0 
+      ? scheduleGroups 
+      : ['COMSE-25', 'COMSE-26', 'COMSE-27'];
 
+  const filteredExams = exams.filter(exam => {
+    if (!user) return false;
+    const groupMatch = user.role === 'student' ? exam.group === user.group : 
+                       filterGroup === 'all' ? true : exam.group === filterGroup;
+    const searchMatch = exam.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        exam.teacher.toLowerCase().includes(searchQuery.toLowerCase());
+    return groupMatch && searchMatch;
+  });
+
+  const mySchedule = user ? schedule.filter(cls => cls.group === user.group) : [];
+  const filteredSchedule = schedule.filter(cls => {
+    const groupMatch = filterGroup === 'all' ? true : cls.group === filterGroup;
+    const dayMatch = filterDay === 'all' ? true : cls.day === filterDay;
+    return groupMatch && dayMatch;
+  });
+
+  // ============ ЭКСПОРТ ============
+  
   const exportToCSV = () => {
-    const headers = ['Группа', 'Предмет', 'Дата', 'Время', 'Аудитория', 'Преподаватель', 'Тип'];
-    const rows = exams.map(e => [e.group, e.subject, e.date, e.time, e.room, e.teacher, e.type]);
+    const headers = ['Группа', 'Предмет', 'Дата', 'Время', 'Аудитория', 'Тип', 'Преподаватель'];
+    const rows = filteredExams.map(e => [
+      e.group, e.subject, e.date, e.time, e.room, e.type, e.teacher
+    ]);
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `exams_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'exams.csv';
+    a.click();
   };
 
   const exportScheduleToCSV = () => {
-    if (!schedule) return;
     const headers = ['День', 'Время', 'Группа', 'Предмет', 'Преподаватель', 'Аудитория'];
-    const rows = schedule.classes.map(c => [c.day, c.time, c.group, c.subject, c.teacher, c.room]);
+    const rows = (user.role === 'student' ? mySchedule : filteredSchedule).map(c => [
+      c.day, c.time, c.group, c.subject, c.teacher, c.room
+    ]);
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `schedule_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'schedule.csv';
+    a.click();
   };
 
-  // Фильтрация
-  const filteredExams = exams.filter(exam => {
-    const matchesSearch = searchQuery === '' || 
-      exam.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      exam.group.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      exam.teacher.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesGroup = filterGroup === 'all' || exam.group === filterGroup;
-    return matchesSearch && matchesGroup;
-  });
+  // ============ СТАТИСТИКА ============
+  
+  const upcomingExams = user ? filteredExams.filter(e => new Date(e.date) >= new Date()).length : 0;
+  const passedExams = user ? filteredExams.filter(e => e.grades && Object.keys(e.grades).length > 0).length : 0;
+  const avgGrade = passedExams > 0 
+    ? (filteredExams.reduce((sum, e) => {
+        const grades = Object.values(e.grades).filter(g => g).map(Number);
+        return sum + (grades.length > 0 ? grades.reduce((a,b) => a+b, 0) / grades.length : 0);
+      }, 0) / passedExams).toFixed(1)
+    : 0;
 
-  const filteredSchedule = schedule?.classes?.filter(cls => {
-    const matchesGroup = filterGroup === 'all' || cls.group === filterGroup;
-    const matchesDay = filterDay === 'all' || cls.day === filterDay;
-    return matchesGroup && matchesDay;
-  }) || [];
+  // Проверка, есть ли экзамен сегодня
+  const todayStr = new Date().toISOString().split('T')[0];
+  const examToday = user ? filteredExams.find(e => e.date === todayStr) : null;
 
-  // ============ ЛОГИН ЭКРАН ============
+  // Получить занятия на ячейку сетки
+  const getClassForCell = (day, time, group) => {
+    return schedule.find(cls => 
+      cls.day === day && cls.time === time && cls.group === group
+    );
+  };
+
+  // ============ RENDER ============
   
   if (!user) {
     return (
       <div className="container login-container">
         <div className="login-header">
-          <h1>🎓 AIU Schedule System</h1>
-          <p>Система управления расписанием и экзаменами</p>
+          <h1>🎓 Система управления экзаменами</h1>
+          <p>Войдите в систему для продолжения</p>
         </div>
-        
+
         <div className="info-box">
-          <h3>ℹ️ Тестовые аккаунты</h3>
+          <h3>📝 Демо аккаунты:</h3>
           <div className="accounts-list">
-            {USERS_DB.map(u => (
-              <div key={u.id} className="account-item">
+            {USERS_DB.map(acc => (
+              <div key={acc.id} className="account-item">
                 <div className="account-header">
-                  <span className="account-name">{u.name}</span>
-                  <span className="account-role">{u.role}</span>
+                  <span className="account-name">{acc.name}</span>
+                  <span className="account-role">{acc.role}</span>
                 </div>
                 <div className="account-creds">
-                  <code>Логин: {u.login}</code>
-                  <code>Пароль: {u.password}</code>
+                  <span>Логин: <code>{acc.login}</code></span>
+                  <span>Пароль: <code>{acc.password}</code></span>
                 </div>
               </div>
             ))}
@@ -407,78 +361,44 @@ function App() {
 
         <form onSubmit={handleLogin} className="login-form">
           <input 
-            name="login" 
-            value={loginForm.login} 
-            onChange={e => setLoginForm({...loginForm, login: e.target.value})} 
-            placeholder="Логин" 
-            required 
+            type="text"
+            placeholder="Логин"
+            value={loginForm.login}
+            onChange={e => setLoginForm({...loginForm, login: e.target.value})}
+            required
           />
           <input 
-            name="password" 
-            type="password" 
-            value={loginForm.password} 
-            onChange={e => setLoginForm({...loginForm, password: e.target.value})} 
-            placeholder="Пароль" 
-            required 
+            type="password"
+            placeholder="Пароль"
+            value={loginForm.password}
+            onChange={e => setLoginForm({...loginForm, password: e.target.value})}
+            required
           />
-          <button type="submit">Войти в систему</button>
+          <button type="submit">Войти</button>
+          {loginError && <p className="login-error">{loginError}</p>}
         </form>
-        
-        {loginError && <p className="login-error">{loginError}</p>}
-
-        <div className="info-box" style={{marginTop: '2rem'}}>
-          <h3>💡 Для общей базы данных</h3>
-          <p style={{fontSize: '0.9rem', lineHeight: '1.6'}}>
-            Сейчас используется localStorage (локальное хранилище браузера).
-            Для общей БД нужен backend сервер (Node.js + MongoDB/PostgreSQL).
-            Инструкции по настройке см. в README.
-          </p>
-        </div>
       </div>
     );
   }
-
-  // ============ СТАТИСТИКА ДЛЯ СТУДЕНТА ============
-  
-  const myExams = user.role === 'student' ? exams.filter(exam => exam.group === user.group) : exams;
-  const sortedExams = myExams.slice().sort((a,b) => (a.date + ' ' + a.time) > (b.date + ' ' + b.time) ? 1 : -1);
-  const upcomingExams = sortedExams.filter(e => new Date(e.date) >= new Date());
-  const nextExam = upcomingExams[0];
-  const completedExams = myExams.filter(e => e.grades[user.name]);
-  const avgGrade = completedExams.length > 0 
-    ? (completedExams.reduce((sum, e) => sum + parseFloat(e.grades[user.name] || 0), 0) / completedExams.length).toFixed(1)
-    : 'N/A';
-
-  const allGroups = [...new Set([
-    ...exams.map(e => e.group),
-    ...(schedule?.groups || [])
-  ])].sort();
-
-  const mySchedule = user.role === 'student' && schedule 
-    ? schedule.classes.filter(c => c.group === user.group)
-    : schedule?.classes || [];
-
-  // ============ ГЛАВНЫЙ ИНТЕРФЕЙС ============
 
   return (
     <div className="container">
       <header>
         <div>
-          <h1>🎓 AIU Schedule</h1>
+          <h1>🎓 Экзамены и Расписание</h1>
           <p className="user-info">
-            {user.name} • <span className="role-badge">{user.role}</span>
-            {user.role === 'student' && ` • ${user.group}`}
+            {user.name} <span className="role-badge">{user.role}</span>
+            {user.group && ` • ${user.group}`}
           </p>
         </div>
         <div className="header-actions">
-          <button className="logout-btn" onClick={() => setUser(null)}>Выйти</button>
           <button className="theme-btn" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
+          <button className="logout-btn" onClick={handleLogout}>Выйти</button>
         </div>
       </header>
 
-      {/* Табы */}
       <div className="tabs">
         <button 
           className={`tab ${activeTab === 'exams' ? 'tab-active' : ''}`}
@@ -490,7 +410,7 @@ function App() {
           className={`tab ${activeTab === 'schedule' ? 'tab-active' : ''}`}
           onClick={() => setActiveTab('schedule')}
         >
-          📅 Расписание занятий
+          📅 Расписание
         </button>
       </div>
 
@@ -499,101 +419,99 @@ function App() {
         {activeTab === 'exams' && (
           <>
             {user.role === 'student' && (
-              <>
-                <section className="stats-section">
-                  <div className="stats-grid">
-                    <div className="stat-card">
-                      <div className="stat-label">Следующий экзамен</div>
-                      <div className="stat-value">{nextExam ? nextExam.subject.substring(0, 15) + '...' : 'Нет'}</div>
-                      {nextExam && <div className="stat-meta">{nextExam.date} в {nextExam.time}</div>}
-                    </div>
-                    <div className="stat-card">
-                      <div className="stat-label">Всего экзаменов</div>
-                      <div className="stat-value">{myExams.length}</div>
-                    </div>
-                    <div className="stat-card">
-                      <div className="stat-label">Средний балл</div>
-                      <div className="stat-value">{avgGrade}</div>
-                    </div>
-                    <div className="stat-card">
-                      <div className="stat-label">Предстоящих</div>
-                      <div className="stat-value">{upcomingExams.length}</div>
-                    </div>
+              <section className="stats-section">
+                <h2>📊 Статистика</h2>
+                <div className="stats-grid">
+                  <div className="stat-card animate-in">
+                    <div className="stat-label">Предстоящие экзамены</div>
+                    <div className="stat-value">{upcomingExams}</div>
                   </div>
-                </section>
-
-                <section>
-                  <h2>Мои экзамены</h2>
-                  {sortedExams.length === 0 ? (
-                    <div className="empty-state">
-                      <p>📭 Пока нет экзаменов</p>
-                    </div>
-                  ) : (
-                    <div className="cards">
-                      {sortedExams.map((exam, idx) => {
-                        const daysUntil = getDaysUntilExam(exam.date);
-                        const isUpcoming = daysUntil >= 0 && daysUntil <= 3;
-                        const grade = exam.grades[user.name];
-                        return (
-                          <div className="card-exam animate-in" key={exam.id} style={{animationDelay: `${idx * 0.05}s`}}>
-                            <div className="card-row">
-                              <div className="card-title">{exam.subject}</div>
-                              <span className="badge-type">{exam.type}</span>
-                            </div>
-                            <div className="card-meta">Группа: {exam.group}</div>
-                            <div className="card-row" style={{marginTop: '0.5rem'}}>
-                              <div className="card-date">
-                                📅 {exam.date} • {exam.time}
-                                {isUpcoming && <span className="badge-upcoming">Скоро! ({daysUntil}д)</span>}
-                              </div>
-                            </div>
-                            <div className="card-teacher">👨‍🏫 {exam.teacher}</div>
-                            <div className="card-teacher">📍 {exam.room}</div>
-                            {grade && (
-                              <div className={`card-grade ${parseFloat(grade) < 50 ? 'card-grade-fail' : 'card-grade-pass'}`}>
-                                Оценка: <strong>{grade}</strong>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
-              </>
+                  <div className="stat-card animate-in" style={{animationDelay: '0.1s'}}>
+                    <div className="stat-label">Сданные экзамены</div>
+                    <div className="stat-value">{passedExams}</div>
+                  </div>
+                  <div className="stat-card animate-in" style={{animationDelay: '0.2s'}}>
+                    <div className="stat-label">Средний балл</div>
+                    <div className="stat-value">{avgGrade}</div>
+                  </div>
+                </div>
+              </section>
             )}
 
-            {(user.role === 'teacher' || user.role === 'admin') && (
+            {user.role !== 'student' && (
               <>
                 <section>
                   <h2>➕ Добавить экзамен</h2>
-                  <form onSubmit={handleAddExam} className="add-form">
-                    <select value={form.group} onChange={e => setForm({...form, group: e.target.value})} required>
-                      <option value="">Выберите группу</option>
-                      {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                    <input value={form.subject} onChange={e => setForm({...form, subject: e.target.value})} placeholder="Предмет" required />
+                  <form onSubmit={addExam} className="add-form">
+                    <input placeholder="Группа" value={form.group} onChange={e => setForm({...form, group: e.target.value})} required />
+                    <input placeholder="Предмет" value={form.subject} onChange={e => setForm({...form, subject: e.target.value})} required />
                     <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} required />
                     <input type="time" value={form.time} onChange={e => setForm({...form, time: e.target.value})} required />
-                    <input value={form.room} onChange={e => setForm({...form, room: e.target.value})} placeholder="Аудитория" />
+                    <input placeholder="Аудитория" value={form.room} onChange={e => setForm({...form, room: e.target.value})} required />
                     <select value={form.type} onChange={e => setForm({...form, type: e.target.value})}>
                       <option value="Экзамен">Экзамен</option>
                       <option value="Зачёт">Зачёт</option>
                       <option value="Курсовая">Курсовая</option>
                     </select>
-                    <input value={form.students} onChange={e => setForm({...form, students: e.target.value})} placeholder="Студенты (через запятую)" style={{gridColumn: '1 / -1'}} />
-                    <button type="submit" style={{gridColumn: '1 / -1'}}>➕ Добавить экзамен</button>
+                    <input placeholder="Студенты (через запятую)" value={form.students} onChange={e => setForm({...form, students: e.target.value})} />
+                    <button type="submit">Добавить</button>
                   </form>
                 </section>
+              </>
+            )}
 
+            {user.role === 'student' ? (
+              <section>
+                <h2>📝 Мои экзамены</h2>
+                {examToday && (
+                  <div className="exam-today-alert animate-in">
+                    ⚠️ Сегодня экзамен: <strong>{examToday.subject}</strong> в {examToday.time}, аудитория {examToday.room}
+                  </div>
+                )}
+                {filteredExams.length === 0 ? (
+                  <div className="empty-state">
+                    <p>📭 Нет назначенных экзаменов</p>
+                  </div>
+                ) : (
+                  <div className="cards">
+                    {filteredExams
+                      .sort((a, b) => new Date(a.date) - new Date(b.date))
+                      .map((exam, idx) => {
+                        const isUpcoming = new Date(exam.date) >= new Date();
+                        const myGrade = exam.grades[user.name];
+                        return (
+                          <div key={exam.id} className="card-exam animate-in" style={{animationDelay: `${idx * 0.05}s`}}>
+                            <div className="card-row">
+                              <h3 className="card-title">{exam.subject}</h3>
+                              {isUpcoming && <span className="badge-upcoming">Скоро</span>}
+                            </div>
+                            <p className="card-meta">
+                              <span className="badge-type">{exam.type}</span>
+                            </p>
+                            <p className="card-date">📅 {new Date(exam.date).toLocaleDateString('ru-RU')} • ⏰ {exam.time}</p>
+                            <p className="card-meta">📍 {exam.room}</p>
+                            <p className="card-teacher">👨‍🏫 {exam.teacher}</p>
+                            {myGrade && (
+                              <div className={`card-grade ${Number(myGrade) >= 50 ? 'card-grade-pass' : 'card-grade-fail'}`}>
+                                Оценка: {myGrade} / 100
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </section>
+            ) : (
+              <>
                 <section>
                   <div className="section-header">
-                    <h2>Все экзамены</h2>
+                    <h2>📋 Управление экзаменами</h2>
                     <div className="section-actions">
                       <input 
-                        type="text" 
-                        placeholder="🔍 Поиск..." 
-                        value={searchQuery} 
+                        type="text"
+                        placeholder="🔍 Поиск..."
+                        value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         className="search-input"
                       />
@@ -681,68 +599,48 @@ function App() {
         {/* ============ РАСПИСАНИЕ ============ */}
         {activeTab === 'schedule' && (
           <>
-            {user.role === 'admin' && (
+            {user.role !== 'student' && (
               <section>
-                <h2>📂 Импорт расписания из Excel</h2>
-                <div className="upload-box">
-                  <input 
-                    type="file" 
-                    accept=".xlsx,.xls" 
-                    onChange={handleFileUpload}
-                    id="file-upload"
-                  />
-                  <label htmlFor="file-upload" className="upload-label">
-                    📤 Выбрать Excel файл
-                  </label>
-                  {uploadProgress && <p className="upload-progress">{uploadProgress}</p>}
-                  <p className="upload-hint">
-                    Загрузите файл расписания в формате .xlsx
-                  </p>
+                <div className="section-header">
+                  <h2>➕ Создание расписания</h2>
+                  <button onClick={() => setShowScheduleForm(true)}>Добавить занятие</button>
                 </div>
-                {schedule && (
-                  <div className="schedule-info">
-                    <p>✅ Загружено: <strong>{schedule.totalClasses}</strong> занятий</p>
-                    <p>📚 Групп: <strong>{schedule.groups?.length || 0}</strong></p>
-                    <p>📅 Семестр: <strong>{schedule.semester}</strong></p>
-                  </div>
-                )}
               </section>
             )}
 
             <section>
               <div className="section-header">
-                <h2>📅 Расписание занятий</h2>
+                <h2>📅 {user.role === 'student' ? 'Моё расписание' : 'Расписание занятий'}</h2>
                 <div className="section-actions">
                   <select value={filterDay} onChange={e => setFilterDay(e.target.value)} className="filter-select">
                     <option value="all">Все дни</option>
-                    <option value="Понедельник">Понедельник</option>
-                    <option value="Вторник">Вторник</option>
-                    <option value="Среда">Среда</option>
-                    <option value="Четверг">Четверг</option>
-                    <option value="Пятница">Пятница</option>
-                    <option value="Суббота">Суббота</option>
+                    {WEEKDAYS.map(day => <option key={day} value={day}>{day}</option>)}
                   </select>
                   {user.role !== 'student' && (
                     <select value={filterGroup} onChange={e => setFilterGroup(e.target.value)} className="filter-select">
                       <option value="all">Все группы</option>
-                      {allGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                      {allScheduleGroups.map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
                   )}
-                  {schedule && <button onClick={exportScheduleToCSV}>💾 Экспорт</button>}
+                  {schedule.length > 0 && <button onClick={exportScheduleToCSV}>💾 Экспорт</button>}
                 </div>
               </div>
 
-              {!schedule ? (
+              {schedule.length === 0 ? (
                 <div className="empty-state">
-                  <p>📅 Расписание не загружено</p>
-                  <p className="empty-hint">Администратор должен загрузить Excel файл с расписанием</p>
+                  <p>📅 Расписание пусто</p>
+                  <p className="empty-hint">
+                    {user.role === 'student' 
+                      ? 'Администратор должен создать расписание' 
+                      : 'Нажмите "Добавить занятие" чтобы начать'}
+                  </p>
                 </div>
-              ) : (
+              ) : user.role === 'student' ? (
+                // Карточки для студента
                 <div className="schedule-grid">
-                  {(user.role === 'student' ? mySchedule : filteredSchedule)
+                  {mySchedule
                     .sort((a, b) => {
-                      const dayOrder = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
-                      const dayDiff = dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+                      const dayDiff = WEEKDAYS.indexOf(a.day) - WEEKDAYS.indexOf(b.day);
                       if (dayDiff !== 0) return dayDiff;
                       return a.time.localeCompare(b.time);
                     })
@@ -759,13 +657,98 @@ function App() {
                       </div>
                     ))}
                 </div>
+              ) : (
+                // Визуальная сетка для админа/препода
+                <div className="schedule-table-container">
+                  <div className="schedule-table">
+                    {/* Заголовок с днями недели */}
+                    <div className="schedule-header">
+                      <div className="schedule-cell schedule-corner">Время / День</div>
+                      {(filterDay === 'all' ? WEEKDAYS : [filterDay]).map(day => (
+                        <div key={day} className="schedule-cell schedule-day-header">{day}</div>
+                      ))}
+                    </div>
+
+                    {/* Группы и временные слоты */}
+                    {allScheduleGroups.map(group => {
+                      if (filterGroup !== 'all' && filterGroup !== group) return null;
+                      
+                      return (
+                        <div key={group} className="schedule-group-section">
+                          <div className="schedule-group-label">{group}</div>
+                          
+                          {TIME_SLOTS.filter((_, i) => i % 2 === 0).map(time => (
+                            <div key={time} className="schedule-row">
+                              <div className="schedule-cell schedule-time-cell">{time}</div>
+                              
+                              {(filterDay === 'all' ? WEEKDAYS : [filterDay]).map(day => {
+                                const cls = getClassForCell(day, time, group);
+                                
+                                return (
+                                  <div key={day} className="schedule-cell schedule-data-cell">
+                                    {cls ? (
+                                      <div className="schedule-class-box">
+                                        <div className="schedule-class-subject">{cls.subject}</div>
+                                        <div className="schedule-class-info">
+                                          <span>👨‍🏫 {cls.teacher}</span>
+                                          <span>📍 {cls.room}</span>
+                                        </div>
+                                        <div className="schedule-class-actions">
+                                          <button 
+                                            className="schedule-edit-btn"
+                                            onClick={() => {
+                                              setScheduleForm(cls);
+                                              setShowScheduleForm(true);
+                                            }}
+                                            title="Редактировать"
+                                          >
+                                            ✏️
+                                          </button>
+                                          <button 
+                                            className="schedule-delete-btn"
+                                            onClick={() => deleteScheduleClass(cls.id)}
+                                            title="Удалить"
+                                          >
+                                            🗑️
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <button 
+                                        className="schedule-add-btn"
+                                        onClick={() => {
+                                          setScheduleForm({
+                                            day,
+                                            time,
+                                            group,
+                                            subject: '',
+                                            teacher: '',
+                                            room: '',
+                                            duration: 90
+                                          });
+                                          setShowScheduleForm(true);
+                                        }}
+                                      >
+                                        +
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </section>
           </>
         )}
       </main>
 
-      {/* Модал подтверждения удаления */}
+      {/* Модал подтверждения удаления экзамена */}
       {showConfirm && (
         <div className="modal-backdrop" onClick={() => { setShowConfirm(false); setDeleteTarget(null); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -789,6 +772,71 @@ function App() {
                 Удалить
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модал создания/редактирования занятия */}
+      {showScheduleForm && (
+        <div className="modal-backdrop" onClick={() => setShowScheduleForm(false)}>
+          <div className="modal schedule-form-modal" onClick={e => e.stopPropagation()}>
+            <h3>{scheduleForm.id ? '✏️ Редактировать занятие' : '➕ Добавить занятие'}</h3>
+            <form onSubmit={addScheduleClass} className="schedule-form">
+              <div className="form-row">
+                <select value={scheduleForm.day} onChange={e => setScheduleForm({...scheduleForm, day: e.target.value})}>
+                  {WEEKDAYS.map(day => <option key={day} value={day}>{day}</option>)}
+                </select>
+                <select value={scheduleForm.time} onChange={e => setScheduleForm({...scheduleForm, time: e.target.value})}>
+                  {TIME_SLOTS.map(time => <option key={time} value={time}>{time}</option>)}
+                </select>
+              </div>
+              
+              <input 
+                placeholder="Группа" 
+                value={scheduleForm.group} 
+                onChange={e => setScheduleForm({...scheduleForm, group: e.target.value})}
+                required 
+              />
+              
+              <input 
+                placeholder="Предмет" 
+                value={scheduleForm.subject} 
+                onChange={e => setScheduleForm({...scheduleForm, subject: e.target.value})}
+                required 
+              />
+              
+              <input 
+                placeholder="Преподаватель" 
+                value={scheduleForm.teacher} 
+                onChange={e => setScheduleForm({...scheduleForm, teacher: e.target.value})}
+                required 
+              />
+              
+              <input 
+                placeholder="Аудитория" 
+                value={scheduleForm.room} 
+                onChange={e => setScheduleForm({...scheduleForm, room: e.target.value})}
+                required 
+              />
+              
+              <select 
+                value={scheduleForm.duration} 
+                onChange={e => setScheduleForm({...scheduleForm, duration: Number(e.target.value)})}
+              >
+                <option value={50}>50 минут</option>
+                <option value={90}>90 минут (пара)</option>
+                <option value={120}>120 минут</option>
+              </select>
+
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowScheduleForm(false)}>
+                  Отмена
+                </button>
+                <button type="submit">
+                  {scheduleForm.id ? 'Сохранить' : 'Добавить'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
