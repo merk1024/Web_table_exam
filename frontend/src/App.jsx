@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 import ScheduleManager from './ScheduleManager';
+import CoursesPage from './CoursesPage';
+import './CoursesPage.css';
 
 
 
@@ -330,6 +332,7 @@ function GradesChart({ exams, studentId }) {
   );
 }
 
+
 // Студенческий профиль
 function StudentProfile({ user, exams }) {
   const studentExams = exams.filter(exam => exam.students?.includes(user.studentId));
@@ -482,6 +485,7 @@ function StudentsRanking({ exams }) {
     </div>
   );
 }
+
 
 function App() {
   const [user, setUser] = useState(null);
@@ -870,35 +874,12 @@ function App() {
       </header>
 
       <div className="tabs">
-        {user.role === 'student' && (
-          <button 
-            className={`tab ${activeTab === 'profile' ? 'tab-active' : ''}`}
-            onClick={() => setActiveTab('profile')}
-          >
-            👤 Профиль
-          </button>
-        )}
-        <button 
-          className={`tab ${activeTab === 'exams' ? 'tab-active' : ''}`}
-          onClick={() => setActiveTab('exams')}
-        >
-          📝 Экзамены
-        </button>
-        <button 
-          className={`tab ${activeTab === 'schedule' ? 'tab-active' : ''}`}
-          onClick={() => setActiveTab('schedule')}
-        >
-          📅 Расписание
-        </button>
-        {user.role !== 'student' && (
-          <button 
-            className={`tab ${activeTab === 'ranking' ? 'tab-active' : ''}`}
-            onClick={() => setActiveTab('ranking')}
-          >
-            🏆 Рейтинг
-          </button>
-        )}
-      </div>
+  <button className={`tab ${activeTab==='profile'?'tab-active':''}`} onClick={()=>setActiveTab('profile')}>👤 Профиль</button>
+  <button className={`tab ${activeTab==='exams'?'tab-active':''}`} onClick={()=>setActiveTab('exams')}>📝 Экзамены</button>
+  <button className={`tab ${activeTab==='schedule'?'tab-active':''}`} onClick={()=>setActiveTab('schedule')}>📅 Расписание</button>
+  <button className={`tab ${activeTab==='courses'?'tab-active':''}`} onClick={()=>setActiveTab('courses')}>📚 Courses</button>
+</div>
+
 
       <main>
         {/* ПРОФИЛЬ СТУДЕНТА */}
@@ -923,8 +904,11 @@ function App() {
                 </div>
               </div>
             </section>
-            
+            {activeTab === 'courses' && <CoursesPage user={user} />}
             <GradesChart exams={filteredExams} studentId={user.studentId} />
+            {activeTab === 'schedule' && (
+            <ScheduleManager userRole={user?.role} />)}
+            {activeTab === 'courses' && (<CoursesPage user={user} />)}
           </>
         )}
 
@@ -1405,5 +1389,6 @@ function App() {
     </div>
   );
 }
+
 
 export default App;

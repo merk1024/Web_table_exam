@@ -30,13 +30,15 @@ const TIME_SLOTS = [
 ];
 
 const ELECTIVES = [
-  { id:'e1', name:'Kyrgyz Language for Foreign Students', teacher:'Ms. Saidalieva',          room:'B106',       color:'#6366f1' },
-  { id:'e2', name:'DocuIT: Professional Writing in IT',   teacher:'Mr. Murrey Eldred',        room:'B101',       color:'#0ea5e9' },
-  { id:'e3', name:'Cybersecurity Foundation',             teacher:'Mr. Ruslan Amanov',        room:'LAB4 (211)', color:'#ef4444' },
-  { id:'e4', name:'Programming with Python',              teacher:'Ms. Zhibek Namatova',      room:'LAB3 (210)', color:'#10b981' },
-  { id:'e5', name:'Startup: From Idea to Launch',         teacher:'Mr. Radmir Gumerov',       room:'B113',       color:'#f59e0b' },
-  { id:'e6', name:'Philosophy of Technology',             teacher:'Ms. Zhamby Dzhusubalieva', room:'B103',       color:'#8b5cf6' },
-  { id:'e7', name:'Digital Marketing Technologies',       teacher:'Ms. Meerim Chukaeva',      room:'B111 Lab',   color:'#ec4899' },
+  // COMCEH-24 / COMSE-24 / COMFCI-24 group
+  { id:'e1', name:'Kyrgyz Language for Foreign Students',       teacher:'Ms. Saidalieva',          room:'B106',       color:'#6366f1', groups:['COMCEH-24','COMSE-24','COMFCI-24'] },
+  // Shared electives (all groups)
+  { id:'e2', name:'DocuIT: Mastering Professional Writing in IT', teacher:'Mr. Murrey Eldred',     room:'B101',       color:'#0ea5e9', groups:'all' },
+  { id:'e3', name:'Cybersecurity Foundation',                   teacher:'Mr. Ruslan Amanov',       room:'LAB4 (211)', color:'#ef4444', groups:'all' },
+  { id:'e4', name:'Programming with Python',                    teacher:'Ms. Zhibek Namatova',     room:'BIGLAB',     color:'#10b981', groups:'all' },
+  { id:'e5', name:'Startup: From Idea to Launch',               teacher:'Mr. Radmir Gumerov',      room:'B113',       color:'#f59e0b', groups:'all' },
+  { id:'e6', name:'Philosophy of Technology',                   teacher:'Ms. Zhamby Dzhusubalieva',room:'B103',       color:'#8b5cf6', groups:'all' },
+  { id:'e7', name:'Digital Marketing Technologies',             teacher:'Ms. Meerim Chukaeva',     room:'B111 Lab',   color:'#ec4899', groups:'all' },
 ];
 
 const ck = (g,d,s) => `${g}||${d}||${s}`;
