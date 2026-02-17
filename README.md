@@ -519,10 +519,7 @@ npx cap add ios
 ## 🤝 Поддержка
 
 Возникли вопросы? 
-<<<<<<< HEAD
 - 📧 Email: erbolabdusaito@gmail.com
-=======
->>>>>>> 50e777b7fadf760a334fdc51b7d2cc5b988d5dbf
 - 💬 Telegram: @merk1024
 
 ## 📝 Лицензия

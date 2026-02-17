@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import './App.css';
+import ScheduleManager from './ScheduleManager';
+
+
 
 // USERS DATABASE с ID студентов
 const USERS_DB = [
@@ -1138,6 +1141,7 @@ function App() {
           <>
             {user.role !== 'student' && (
               <section>
+                <ScheduleManager userRole={user.role} />
                 <div className="section-header">
                   <h2>➕ Создание расписания</h2>
                   <button onClick={() => {
