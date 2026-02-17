@@ -519,8 +519,7 @@ npx cap add ios
 ## 🤝 Поддержка
 
 Возникли вопросы? 
-- 📧 Email: support@example.com
-- 💬 Telegram: @your_telegram
+- 💬 Telegram: @merk1024
 
 ## 📝 Лицензия
 
